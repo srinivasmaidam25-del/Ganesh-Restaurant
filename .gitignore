@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+client/node_modules/
+
+# next.js build output
+.next/
+client/.next/
+
+# env configuration files (keeps your Supabase passwords secure)
+.env*
+client/.env*
+
+# production build outputs
+build/
+out/
+client/build/
+client/out/
+
+# system / IDE files
+.DS_Store
+.vscode/
+.idea/
+*.log
