@@ -187,8 +187,8 @@ VALUES (
   5.0, 
   2.0, 
   '₹',
-  'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&q=80&w=1200',
-  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=200'
+  'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&q=80&w=1200',
+  'https://i.postimg.cc/4mVbnxjj/Chat-GPT-Image-Jul-29-2026-12-22-54-PM.png'
 ) ON CONFLICT (slug) DO NOTHING;
 
 -- Insert Tables
@@ -419,7 +419,41 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER trg_validate_order_table
+CREATE TRIGGER trg_validate_order_table
 BEFORE INSERT ON orders
 FOR EACH ROW
 EXECUTE FUNCTION validate_order_table();
+
+-- 14. Automatically Sync Registered Users to Public Profiles
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, restaurant_id, name, email, role, phone)
+  VALUES (
+    NEW.id,
+    'e29d7fa1-3211-477b-8919-450f63d274ff', -- Default Restaurant ID
+    COALESCE(NEW.raw_user_meta_data->>'name', 'Staff Member'),
+    NEW.email,
+    'admin', -- Automatically assign admin role for full database privileges
+    COALESCE(NEW.raw_user_meta_data->>'phone', '')
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Bind the trigger to fire whenever a new user registers in Supabase Auth
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Sync any existing users in auth.users to public.profiles table
+INSERT INTO public.profiles (id, restaurant_id, name, email, role)
+SELECT 
+  id, 
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  COALESCE(raw_user_meta_data->>'name', 'Staff Member'), 
+  email, 
+  'admin'
+FROM auth.users
+ON CONFLICT (id) DO UPDATE SET role = 'admin';

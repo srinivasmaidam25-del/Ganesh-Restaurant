@@ -9,12 +9,12 @@ import { useCart } from '@/context/CartContext';
 import { 
   Search, Clock, MapPin, Phone, Mail, 
   ShoppingBag, Loader2, Compass, 
-  MessageSquare, Info, Tag
+  MessageSquare, Info, Tag, Shield, CreditCard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 
-type TabType = 'menu' | 'cart' | 'offers' | 'reviews' | 'info';
+type TabType = 'menu' | 'cart' | 'offers' | 'reviews' | 'info' | 'orders';
 
 interface CustomerMenuProps {
   slug?: string;
@@ -95,6 +95,28 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [paymentSimulating, setPaymentSimulating] = useState(false);
 
+  // Customer Login & Order History states
+  const [loggedInPhone, setLoggedInPhone] = useState<string | null>(null);
+  const [loginInputPhone, setLoginInputPhone] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  // Hydrate loggedInPhone from localStorage safely on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('customerPhone');
+      if (stored) {
+        setLoggedInPhone(stored);
+      }
+    }
+  }, []);
+
+  // Pre-fill checkout phone if logged in
+  useEffect(() => {
+    if (loggedInPhone) {
+      setCheckoutPhone(loggedInPhone);
+    }
+  }, [loggedInPhone]);
+
   // Review states
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [reviewName, setReviewName] = useState('');
@@ -109,11 +131,11 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
       
       const defaultRestaurant = {
         id: 'e29d7fa1-3211-477b-8919-450f63d274ff',
-        name: 'La Piazza Cafe',
+        name: 'La Piazza Restaurant',
         slug: 'la-piazza',
         address: '12, Connaught Place, New Delhi, India',
         banner: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&q=80&w=1200',
-        logo: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&q=80&w=200',
+        logo: 'https://i.postimg.cc/4mVbnxjj/Chat-GPT-Image-Jul-29-2026-12-22-54-PM.png',
         contact_phone: '+91 98765 43210',
         contact_email: 'info@lapiazza.com',
         tax_percentage: 5.0,
@@ -226,37 +248,42 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
       if (isDemoMode) {
         return mockDb.restaurant;
       }
-      // Query by slug
-      let { data, error } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('slug', restaurantSlug.toLowerCase())
-        .maybeSingle();
-
-      if (error || !data) {
-        // Fallback: pick first restaurant in database
-        const { data: list, error: listErr } = await supabase
+      try {
+        // Query by slug
+        let { data, error } = await supabase
           .from('restaurants')
           .select('*')
-          .limit(1);
-        
-        if (list && list.length > 0) {
-          data = list[0];
-        } else {
-          // DATABASE IS EMPTY! Trigger auto-seed!
-          await seedSupabaseFromMockDb();
-          const { data: retryList } = await supabase
+          .eq('slug', restaurantSlug.toLowerCase())
+          .maybeSingle();
+
+        if (error || !data) {
+          // Fallback: pick first restaurant in database
+          const { data: list, error: listErr } = await supabase
             .from('restaurants')
             .select('*')
             .limit(1);
-          if (retryList && retryList.length > 0) {
-            data = retryList[0];
+          
+          if (list && list.length > 0) {
+            data = list[0];
           } else {
-            throw new Error('Restaurant not found');
+            // DATABASE IS EMPTY! Trigger auto-seed!
+            await seedSupabaseFromMockDb();
+            const { data: retryList } = await supabase
+              .from('restaurants')
+              .select('*')
+              .limit(1);
+            if (retryList && retryList.length > 0) {
+              data = retryList[0];
+            } else {
+              return mockDb.restaurant;
+            }
           }
         }
+        return data || mockDb.restaurant;
+      } catch (err) {
+        console.error('Error fetching restaurant menu settings:', err);
+        return mockDb.restaurant;
       }
-      return data;
     }
   });
 
@@ -266,17 +293,22 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', restaurantId],
     queryFn: async () => {
-      if (isDemoMode) {
+      if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
         return mockDb.getCategories();
       }
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true)
-        .order('order_index');
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from('categories')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .eq('is_active', true)
+          .order('order_index');
+        if (error || !data) throw error || new Error('No categories data returned');
+        return data;
+      } catch (err) {
+        console.error('Error fetching categories, falling back to mock:', err);
+        return mockDb.getCategories();
+      }
     },
     enabled: !!restaurantId
   });
@@ -285,12 +317,12 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
   const { data: foods = [], isLoading: isFoodsLoading } = useQuery({
     queryKey: ['foods', restaurantId, selectedCategory, searchTerm, vegFilter, bestsellerFilter, sortBy],
     queryFn: async () => {
-      if (isDemoMode) {
+      if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
         let list = mockDb.getFoods();
         if (selectedCategory) list = list.filter(f => f.categoryId === selectedCategory);
         if (searchTerm) list = list.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
         if (vegFilter === 'veg') list = list.filter(f => f.isVeg);
-        if (vegFilter === 'non-veg') list = list.filter(f => f.isNonVeg);
+        if (vegFilter === 'non-veg') list = list.filter(f => !f.isVeg);
         if (bestsellerFilter) list = list.filter(f => f.isBestseller);
 
         if (sortBy === 'priceLowHigh') list.sort((a, b) => a.price - b.price);
@@ -300,21 +332,37 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
         return list;
       }
 
-      let query = supabase.from('foods').select('*, categories(name)').eq('restaurant_id', restaurantId);
-      if (selectedCategory) query = query.eq('category_id', selectedCategory);
-      if (searchTerm) query = query.ilike('name', `%${searchTerm}%`);
-      if (vegFilter === 'veg') query = query.eq('is_veg', true);
-      if (vegFilter === 'non-veg') query = query.eq('is_non_veg', true);
-      if (bestsellerFilter) query = query.eq('is_bestseller', true);
+      try {
+        let query = supabase.from('foods').select('*, categories(name)').eq('restaurant_id', restaurantId);
+        if (selectedCategory) query = query.eq('category_id', selectedCategory);
+        if (searchTerm) query = query.ilike('name', `%${searchTerm}%`);
+        if (vegFilter === 'veg') query = query.eq('is_veg', true);
+        if (vegFilter === 'non-veg') query = query.eq('is_veg', false);
+        if (bestsellerFilter) query = query.eq('is_bestseller', true);
 
-      if (sortBy === 'priceLowHigh') query = query.order('price', { ascending: true });
-      else if (sortBy === 'priceHighLow') query = query.order('price', { ascending: false });
-      else if (sortBy === 'rating') query = query.order('rating', { ascending: false });
-      else if (sortBy === 'prepTime') query = query.order('prep_time', { ascending: true });
+        if (sortBy === 'priceLowHigh') query = query.order('price', { ascending: true });
+        else if (sortBy === 'priceHighLow') query = query.order('price', { ascending: false });
+        else if (sortBy === 'rating') query = query.order('rating', { ascending: false });
+        else if (sortBy === 'prepTime') query = query.order('prep_time', { ascending: true });
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data;
+        const { data, error } = await query;
+        if (error || !data) throw error || new Error('No foods data returned');
+        return data;
+      } catch (err) {
+        console.error('Error fetching foods, falling back to mock:', err);
+        let list = mockDb.getFoods();
+        if (selectedCategory) list = list.filter(f => f.categoryId === selectedCategory);
+        if (searchTerm) list = list.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        if (vegFilter === 'veg') list = list.filter(f => f.isVeg);
+        if (vegFilter === 'non-veg') list = list.filter(f => !f.isVeg);
+        if (bestsellerFilter) list = list.filter(f => f.isBestseller);
+
+        if (sortBy === 'priceLowHigh') list.sort((a, b) => a.price - b.price);
+        else if (sortBy === 'priceHighLow') list.sort((a, b) => b.price - a.price);
+        else if (sortBy === 'rating') list.sort((a, b) => b.rating - a.rating);
+        else if (sortBy === 'prepTime') list.sort((a, b) => a.prepTime - b.prepTime);
+        return list;
+      }
     },
     enabled: !!restaurantId
   });
@@ -323,16 +371,21 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
   const { data: coupons = [] } = useQuery({
     queryKey: ['coupons', restaurantId],
     queryFn: async () => {
-      if (isDemoMode) {
+      if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
         return mockDb.getCoupons();
       }
-      const { data, error } = await supabase
-        .from('coupons')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true);
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from('coupons')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .eq('is_active', true);
+        if (error || !data) throw error || new Error('No coupons data returned');
+        return data;
+      } catch (err) {
+        console.error('Error fetching coupons, falling back to mock:', err);
+        return mockDb.getCoupons();
+      }
     },
     enabled: !!restaurantId
   });
@@ -341,18 +394,52 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
   const { data: reviews = [] } = useQuery({
     queryKey: ['reviews', restaurantId],
     queryFn: async () => {
-      if (isDemoMode) {
+      if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
         return mockDb.getReviews();
       }
-      const { data, error } = await supabase
-        .from('reviews')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from('reviews')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .order('created_at', { ascending: false });
+        if (error || !data) throw error || new Error('No reviews data returned');
+        return data;
+      } catch (err) {
+        console.error('Error fetching reviews, falling back to mock:', err);
+        return mockDb.getReviews();
+      }
     },
     enabled: !!restaurantId
+  });
+
+  // 6. Fetch Customer Order History
+  const { data: customerOrders = [], isLoading: isLoadingCustomerOrders } = useQuery({
+    queryKey: ['customerOrders', restaurantId, loggedInPhone],
+    queryFn: async () => {
+      if (!loggedInPhone || !restaurantId) return [];
+      if (isDemoMode || restaurantId.startsWith('rest-')) {
+        return mockDb.getOrders()
+          .filter(o => o.customerPhone === loggedInPhone)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      }
+      try {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .eq('customer_phone', loggedInPhone)
+          .order('created_at', { ascending: false });
+        if (error || !data) throw error || new Error('No orders data returned');
+        return data || [];
+      } catch (err) {
+        console.error('Error fetching customer orders, falling back to mock:', err);
+        return mockDb.getOrders()
+          .filter(o => o.customerPhone === loggedInPhone)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      }
+    },
+    enabled: !!restaurantId && !!loggedInPhone
   });
 
   // Basket totals
@@ -375,7 +462,7 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
           return;
         }
         const val = c.type === 'percentage' ? (subTotal * c.value) / 100 : c.value;
-        applyCoupon({ code: c.code, type: c.type, value: c.value, discountAmount: val });
+        applyCoupon({ code: c.code, type: c.type, value: c.value, discountAmount: val, minOrderAmount: c.minOrderAmount });
         setCouponInput('');
         return;
       }
@@ -397,7 +484,7 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
         return;
       }
       const discAmt = data.type === 'percentage' ? (subTotal * data.value) / 100 : data.value;
-      applyCoupon({ code: data.code, type: data.type, value: data.value, discountAmount: discAmt });
+      applyCoupon({ code: data.code, type: data.type, value: data.value, discountAmount: discAmt, minOrderAmount: data.min_order_amount });
       setCouponInput('');
     } catch {
       setCouponError('Error applying promo code');
@@ -409,15 +496,20 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
     if (!reviewName || !reviewComment) return;
     setIsSubmittingReview(true);
     try {
-      if (isDemoMode) {
+      if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
         mockDb.createReview(reviewName, reviewRating, reviewComment);
       } else {
-        await supabase.from('reviews').insert([{
-          restaurant_id: restaurantId,
-          customer_name: reviewName,
-          rating: reviewRating,
-          comment: reviewComment
-        }]);
+        try {
+          await supabase.from('reviews').insert([{
+            restaurant_id: restaurantId,
+            customer_name: reviewName,
+            rating: reviewRating,
+            comment: reviewComment
+          }]);
+        } catch (err) {
+          console.error('Error posting review to Supabase, falling back to mock:', err);
+          mockDb.createReview(reviewName, reviewRating, reviewComment);
+        }
       }
       queryClient.invalidateQueries({ queryKey: ['reviews', restaurantId] });
       setReviewName('');
@@ -434,11 +526,21 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
     e.preventDefault();
     if (!checkoutName) return;
 
+    const cleanPhone = checkoutPhone.replace(/\D/g, '');
+    if (!checkoutPhone) {
+      alert('Please enter your phone number.');
+      return;
+    }
+    if (cleanPhone.length !== 10) {
+      alert('Please enter a valid 10-digit phone number.');
+      return;
+    }
+
     setIsPlacingOrder(true);
     try {
       let order: any = null;
 
-      if (isDemoMode) {
+      if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
         order = mockDb.createOrder({
           tableNumber,
           customerName: checkoutName,
@@ -454,43 +556,64 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
           loyaltyPointsEarned: Math.floor(total / 10)
         });
 
-        if (paymentMethod === 'stripe' || paymentMethod === 'razorpay') {
+        if (paymentMethod !== 'cash') {
           setPaymentSimulating(true);
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          mockDb.updateOrder(order.id, { paymentStatus: 'paid' });
+          await new Promise(resolve => setTimeout(resolve, 3000));
         }
       } else {
-        const { data, error } = await supabase
-          .from('orders')
-          .insert([{
-            restaurant_id: restaurantId,
-            table_id: tableId || null,
-            table_number: tableNumber,
-            customer_name: checkoutName,
-            customer_phone: checkoutPhone,
-            customer_email: checkoutEmail,
-            items: cartItems,
-            sub_total: subTotal,
+        try {
+          const { data, error } = await supabase
+            .from('orders')
+            .insert([{
+              restaurant_id: restaurantId,
+              table_id: tableId || null,
+              table_number: tableNumber,
+              customer_name: checkoutName,
+              customer_phone: checkoutPhone,
+              customer_email: checkoutEmail,
+              items: cartItems,
+              sub_total: subTotal,
+              tax,
+              service_charge: serviceCharge,
+              discount,
+              total,
+              payment_method: paymentMethod,
+              payment_status: 'pending',
+              status: 'received',
+              notes,
+              loyalty_points_earned: Math.floor(total / 10)
+            }])
+            .select()
+            .single();
+
+          if (error) throw error;
+          order = data;
+
+          if (paymentMethod !== 'cash') {
+            setPaymentSimulating(true);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        } catch (err) {
+          console.error('Error placing order in Supabase, falling back to mock:', err);
+          order = mockDb.createOrder({
+            tableNumber,
+            customerName: checkoutName,
+            customerPhone: checkoutPhone,
+            items: cartItems.map(i => ({ foodId: i.foodId, name: i.name, price: i.price, quantity: i.quantity, notes: i.notes })),
+            subTotal,
             tax,
-            service_charge: serviceCharge,
+            serviceCharge,
             discount,
             total,
-            payment_method: paymentMethod,
-            payment_status: 'pending',
-            status: 'received',
+            paymentMethod,
             notes,
-            loyalty_points_earned: Math.floor(total / 10)
-          }])
-          .select()
-          .single();
+            loyaltyPointsEarned: Math.floor(total / 10)
+          });
 
-        if (error) throw error;
-        order = data;
-
-        if (paymentMethod === 'stripe' || paymentMethod === 'razorpay') {
-          setPaymentSimulating(true);
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          await supabase.from('orders').update({ payment_status: 'paid' }).eq('id', order.id);
+          if (paymentMethod !== 'cash') {
+            setPaymentSimulating(true);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
         }
       }
 
@@ -499,6 +622,17 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
         spread: 80,
         origin: { y: 0.6 }
       });
+
+      // Auto-login if not logged in
+      if (!loggedInPhone && checkoutPhone) {
+        localStorage.setItem('customerPhone', checkoutPhone);
+        setLoggedInPhone(checkoutPhone);
+      }
+      // Invalidate customer orders query to fetch the new order in history
+      const activePhone = loggedInPhone || checkoutPhone;
+      if (activePhone) {
+        queryClient.invalidateQueries({ queryKey: ['customerOrders', restaurantId, activePhone] });
+      }
 
       clearCart();
       setActiveTab('menu');
@@ -561,13 +695,18 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
   const primaryColor = resData?.theme?.primaryColor || '#EA580C';
   const currencySymbol = resData?.currency || '₹';
 
+  const rawBanner = resData?.banner || 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&q=80&w=1200';
+  const bannerUrl = (rawBanner.includes('photo-1555396273-367ea4eb4db5') || rawBanner.includes('photo-1563379091339-03b21ab4a4f8') || rawBanner.includes('photo-1633945274405-b6c8069047b0'))
+    ? 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&q=80&w=1200'
+    : rawBanner;
+
   return (
     <div className="relative min-h-screen text-neutral-100">
       {/* Background Image Container */}
       <div 
         className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0"
         style={{ 
-          backgroundImage: `url('/images/indian_cafe_bg.jpg')`,
+          backgroundImage: `url('https://img.magnific.com/premium-photo/poster-restaurant-called-food_862462-21500.jpg')`,
         }}
       />
       {/* Dark tint overlay */}
@@ -579,18 +718,22 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
         {/* 1. APP COMPACT HEADER */}
         <div 
           className="h-32 w-full relative bg-cover bg-center border-b border-neutral-900" 
-          style={{ backgroundImage: `url(${resData?.banner || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600'})` }}
+          style={{ backgroundImage: `url('${bannerUrl}')` }}
         >
           <div className="absolute inset-0 bg-neutral-950/70" />
           
           <div className="absolute inset-0 flex items-center justify-between px-4 pt-2">
           <div className="flex items-center gap-3">
-            {resData?.logo && (
+            {resData?.logo ? (
               <img 
                 src={resData.logo} 
                 alt="logo" 
-                className="h-10 w-10 rounded-xl object-cover border border-neutral-800 bg-neutral-900"
+                className="h-14 w-14 rounded-2xl object-contain p-1.5 bg-white border border-neutral-850 shadow-md shrink-0 animate-fade-in"
               />
+            ) : (
+              <div className="h-14 w-14 rounded-2xl border border-orange-500/20 bg-orange-500/10 text-orange-500 flex items-center justify-center font-black text-xl shadow-md shrink-0">
+                {(resData?.name || 'R')[0].toUpperCase()}
+              </div>
             )}
             <div>
               <h1 className="text-sm font-black text-white leading-tight">{resData?.name}</h1>
@@ -600,11 +743,20 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
             </div>
           </div>
 
-          {tableNumber && (
-            <span className="px-2.5 py-1 bg-orange-600/90 text-white rounded-full font-black text-[9px] uppercase tracking-wider animate-pulse">
-              Table {tableNumber}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {tableNumber && (
+              <span className="px-2.5 py-1 bg-orange-600/90 text-white rounded-full font-black text-[9px] uppercase tracking-wider animate-pulse" style={{ backgroundColor: primaryColor }}>
+                Table {tableNumber}
+              </span>
+            )}
+            <button
+              onClick={() => setActiveTab('orders')}
+              className="px-2.5 py-1 rounded-full bg-neutral-900/95 border border-neutral-800 text-white font-black text-[9px] uppercase tracking-wider flex items-center gap-1 hover:bg-neutral-800 transition shadow-lg"
+            >
+              <span>👤</span>
+              <span>{loggedInPhone ? 'My Orders' : 'Log In'}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -671,10 +823,10 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
               </div>
 
               {/* Sticky Categories Bar */}
-              <div className="flex gap-2 overflow-x-auto no-scrollbar py-1.5 border-b border-neutral-900">
+              <div className="flex gap-2 overflow-x-auto no-scrollbar py-2 border-b border-neutral-900">
                 <button
                   onClick={() => setSelectedCategory('')}
-                  className={`px-3 py-1.5 rounded-xl text-[10px] font-extrabold transition whitespace-nowrap ${!selectedCategory ? 'bg-orange-600 text-white' : 'bg-neutral-900 text-neutral-400'}`}
+                  className={`px-4 py-2 rounded-xl text-[13px] font-black transition whitespace-nowrap ${!selectedCategory ? 'bg-orange-600 text-white' : 'bg-neutral-900 text-neutral-400'}`}
                 >
                   All Items
                 </button>
@@ -682,7 +834,7 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
                   <button
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.id)}
-                    className={`px-3 py-1.5 rounded-xl text-[10px] font-extrabold transition whitespace-nowrap ${selectedCategory === cat.id ? 'bg-orange-600 text-white' : 'bg-neutral-900 text-neutral-400'}`}
+                    className={`px-4 py-2 rounded-xl text-[13px] font-black transition whitespace-nowrap ${selectedCategory === cat.id ? 'bg-orange-600 text-white' : 'bg-neutral-900 text-neutral-400'}`}
                   >
                     {cat.name}
                   </button>
@@ -871,13 +1023,23 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
                   <div className="pt-2">
                     <span className="text-[10px] uppercase font-bold text-neutral-500 block mb-2">Have a Promo Coupon?</span>
                     {coupon ? (
-                      <div className="p-3.5 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-between">
-                        <div>
-                          <span className="text-xs font-black text-green-400">{coupon.code} APPLIED</span>
-                          <p className="text-[10px] text-neutral-400 mt-0.5">Discount: -{currencySymbol}{coupon.discountAmount.toFixed(2)}</p>
+                      subTotal < (coupon.minOrderAmount || 0) ? (
+                        <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-between">
+                          <div>
+                            <span className="text-xs font-black text-red-400">{coupon.code} INACTIVE</span>
+                            <p className="text-[10px] text-neutral-400 mt-0.5">Add {currencySymbol}{((coupon.minOrderAmount || 0) - subTotal).toFixed(2)} more to activate.</p>
+                          </div>
+                          <button onClick={() => applyCoupon(null)} className="text-[10px] text-neutral-500 font-bold underline">Remove</button>
                         </div>
-                        <button onClick={() => applyCoupon(null)} className="text-[10px] text-orange-500 font-bold underline">Remove</button>
-                      </div>
+                      ) : (
+                        <div className="p-3.5 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-between">
+                          <div>
+                            <span className="text-xs font-black text-green-400">{coupon.code} APPLIED</span>
+                            <p className="text-[10px] text-neutral-400 mt-0.5">Discount: -{currencySymbol}{discount.toFixed(2)}</p>
+                          </div>
+                          <button onClick={() => applyCoupon(null)} className="text-[10px] text-orange-500 font-bold underline">Remove</button>
+                        </div>
+                      )
                     ) : (
                       <div className="flex gap-2">
                         <input 
@@ -915,8 +1077,15 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
                           <input type="text" required value={checkoutName} onChange={(e) => setCheckoutName(e.target.value)} placeholder="Mario Rossi" className="w-full bg-neutral-900 border border-neutral-850 rounded-xl px-3 py-2.5 text-xs focus:outline-none" />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[9px] uppercase font-bold text-neutral-500">Phone (Optional)</label>
-                          <input type="tel" value={checkoutPhone} onChange={(e) => setCheckoutPhone(e.target.value)} placeholder="+1 (555) 010" className="w-full bg-neutral-900 border border-neutral-850 rounded-xl px-3 py-2.5 text-xs focus:outline-none" />
+                          <label className="text-[9px] uppercase font-bold text-neutral-500">Phone Number * (10 digits)</label>
+                          <input 
+                            type="tel" 
+                            required 
+                            value={checkoutPhone} 
+                            onChange={(e) => setCheckoutPhone(e.target.value)} 
+                            placeholder="e.g. 9876543210" 
+                            className="w-full bg-neutral-900 border border-neutral-850 rounded-xl px-3 py-2.5 text-xs focus:outline-none" 
+                          />
                         </div>
 
                         {/* Payment modes */}
@@ -926,8 +1095,8 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
                             <button type="button" onClick={() => setPaymentMethod('cash')} className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 ${paymentMethod === 'cash' ? 'border-orange-500 bg-orange-500/10' : 'border-neutral-850'}`}>
                               <span className="font-bold text-neutral-200">💵 Cash</span><span className="text-[8px] text-neutral-500">Pay at counter later</span>
                             </button>
-                            <button type="button" onClick={() => setPaymentMethod('stripe')} className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 ${paymentMethod === 'stripe' ? 'border-orange-500 bg-orange-500/10' : 'border-neutral-850'}`}>
-                              <span className="font-bold text-neutral-200">💳 Card</span><span className="text-[8px] text-neutral-500">Stripe Simulator</span>
+                            <button type="button" onClick={() => setPaymentMethod('upi')} className={`p-2.5 rounded-xl border text-left flex flex-col gap-0.5 ${paymentMethod === 'upi' ? 'border-orange-500 bg-orange-500/10' : 'border-neutral-850'}`}>
+                              <span className="font-bold text-neutral-200">📱 UPI Pay</span><span className="text-[8px] text-neutral-500">GPay, PhonePe, Paytm</span>
                             </button>
                           </div>
                         </div>
@@ -981,7 +1150,18 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
                         </div>
                         <button
                           onClick={() => {
-                            applyCoupon({ code: c.code, type: c.type, value: c.value, discountAmount: c.type === 'percentage' ? (subTotal * c.value)/100 : c.value });
+                            const minSpend = c.minOrderAmount || c.min_order_amount || 0;
+                            if (subTotal < minSpend) {
+                              alert(`Min spend of ${currencySymbol}${minSpend} required to apply this coupon.`);
+                              return;
+                            }
+                            applyCoupon({ 
+                              code: c.code, 
+                              type: c.type, 
+                              value: c.value, 
+                              discountAmount: c.type === 'percentage' ? (subTotal * c.value)/100 : c.value,
+                              minOrderAmount: minSpend
+                            });
                             setActiveTab('cart');
                           }}
                           className="px-3.5 py-1.5 bg-neutral-900 border border-neutral-800 hover:border-orange-500 rounded-xl font-bold text-[10px] text-neutral-200 transition"
@@ -1113,6 +1293,199 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
             </motion.div>
           )}
 
+          {/* ========================================================
+              TAB F: ORDER HISTORY / CUSTOMER DASHBOARD
+              ======================================================== */}
+          {activeTab === 'orders' && (
+            <motion.div
+              key="orders-history-tab"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-5 animate-fade-in"
+            >
+              <h3 className="font-black text-xs text-neutral-450 uppercase tracking-widest">My Order History</h3>
+
+              {!loggedInPhone ? (
+                // Customer Login Screen
+                <div className="glass p-6 rounded-3xl space-y-5 border border-neutral-900 text-center">
+                  <div className="h-14 w-14 rounded-2xl bg-orange-500/10 text-orange-500 flex items-center justify-center mx-auto text-2xl font-bold" style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}>
+                    🔑
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-black text-sm text-white">Log in to view history</h4>
+                    <p className="text-[10px] text-neutral-450 leading-relaxed">
+                      Enter the 10-digit mobile number you used to place orders. We will instantly retrieve your dining logs.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+                      <input 
+                        type="text" 
+                        maxLength={10}
+                        placeholder="10-digit Mobile Number"
+                        value={loginInputPhone}
+                        onChange={(e) => {
+                          const clean = e.target.value.replace(/\D/g, '');
+                          setLoginInputPhone(clean);
+                          setLoginError('');
+                        }}
+                        className="w-full bg-neutral-950/80 border border-neutral-850 rounded-xl py-2.5 pl-10 pr-4 text-xs font-medium text-white placeholder-neutral-500 focus:outline-none focus:border-orange-500 transition"
+                      />
+                    </div>
+                    {loginError && (
+                      <p className="text-[10px] text-red-500 font-bold">{loginError}</p>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (loginInputPhone.length !== 10) {
+                          setLoginError('Please enter a valid 10-digit phone number.');
+                          return;
+                        }
+                        localStorage.setItem('customerPhone', loginInputPhone);
+                        setLoggedInPhone(loginInputPhone);
+                        setLoginInputPhone('');
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold transition text-xs"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      Retrieve My Orders
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // Customer Dashboard Screen (Logged In)
+                <div className="space-y-4">
+                  {/* Customer Info Header */}
+                  <div className="glass px-4 py-3 rounded-2xl border border-neutral-900 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-full bg-neutral-900 border border-neutral-800 text-[10px] font-bold text-neutral-300 flex items-center justify-center">
+                        👤
+                      </div>
+                      <div className="text-[11px]">
+                        <span className="text-neutral-550 block text-[9px] uppercase font-bold tracking-wider">Logged in as</span>
+                        <span className="font-bold text-white block">{loggedInPhone}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('customerPhone');
+                        setLoggedInPhone(null);
+                      }}
+                      className="text-[10px] text-red-500 hover:text-red-400 font-bold transition"
+                    >
+                      Log Out
+                    </button>
+                  </div>
+
+                  {/* Orders Listing */}
+                  {isLoadingCustomerOrders ? (
+                    <div className="flex flex-col items-center py-12">
+                      <Loader2 className="h-6 w-6 animate-spin text-orange-500" style={{ color: primaryColor }} />
+                      <span className="text-[10px] text-neutral-500 mt-2">Retrieving orders...</span>
+                    </div>
+                  ) : customerOrders.length === 0 ? (
+                    <div className="glass p-8 rounded-3xl border border-neutral-900 text-center">
+                      <p className="text-[11px] text-neutral-500">No orders found matching this number.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {customerOrders.map((ord: any) => (
+                        <div key={ord.id} className="glass p-4 rounded-2xl border border-neutral-900 space-y-3">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-850 text-neutral-300 font-bold">
+                                Table {ord.table_number || ord.tableNumber || 'Takeaway'}
+                              </span>
+                              <span className="text-neutral-500">
+                                #{ord.id.substring(0, 8).toUpperCase()}
+                              </span>
+                            </div>
+                            <span className="text-neutral-550">
+                              {new Date(ord.created_at || ord.createdAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+                            </span>
+                          </div>
+
+                          {/* Items ordered */}
+                          <div className="space-y-1 text-[11px] text-neutral-400">
+                            {ord.items.map((it: any, idx: number) => (
+                              <div key={idx} className="flex justify-between">
+                                <span>{it.name} <span className="text-orange-500 font-black" style={{ color: primaryColor }}>x{it.quantity}</span></span>
+                                <span>{currencySymbol}{(it.price * it.quantity).toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Total and actions */}
+                          <div className="flex justify-between items-center pt-2.5 border-t border-neutral-900 text-[11px] flex-wrap gap-2">
+                            <span className="font-bold text-neutral-300">
+                              Total: {currencySymbol}{ord.total.toFixed(2)}
+                            </span>
+                            
+                            <div className="flex gap-2 items-center">
+                              {/* Status Badge */}
+                              {ord.status === 'received' && (
+                                <span className="px-2 py-0.5 bg-neutral-900 border border-neutral-850 text-neutral-400 rounded text-[9px] font-bold">
+                                  Received
+                                </span>
+                              )}
+                              {ord.status === 'accepted' && (
+                                <span className="px-2 py-0.5 bg-neutral-900 border border-neutral-850 text-neutral-350 rounded text-[9px] font-bold">
+                                  Accepted
+                                </span>
+                              )}
+                              {ord.status === 'preparing' && (
+                                <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded text-[9px] font-bold animate-pulse">
+                                  Cooking 🍳
+                                </span>
+                              )}
+                              {ord.status === 'ready' && (
+                                <span className="px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-500 rounded text-[9px] font-bold">
+                                  Ready 🛎
+                                </span>
+                              )}
+                              {ord.status === 'served' && (
+                                <span className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-500 rounded text-[9px] font-bold">
+                                  Served 🍽
+                                </span>
+                              )}
+                              {ord.status === 'completed' && (
+                                <span className="px-2 py-0.5 bg-green-950/20 border border-green-900/30 text-green-400 rounded text-[9px] font-bold">
+                                  ✓ Completed
+                                </span>
+                              )}
+                              {ord.status === 'cancelled' && (
+                                <span className="px-2 py-0.5 bg-red-950/20 border border-red-900/30 text-red-400 rounded text-[9px] font-bold">
+                                  Cancelled
+                                </span>
+                              )}
+
+                              {/* Paid Invoice PDF link */}
+                              {(ord.payment_status || ord.paymentStatus) === 'paid' && (
+                                <a 
+                                  href={`/api/invoice?orderId=${ord.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-2.5 py-1 bg-orange-600 hover:bg-orange-500 rounded font-black text-white text-[9px] uppercase tracking-wider transition"
+                                  style={{ backgroundColor: primaryColor }}
+                                >
+                                  Receipt PDF
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </motion.div>
+          )}
+
         </AnimatePresence>
       </div>
 
@@ -1140,6 +1513,14 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
         </button>
 
         <button 
+          onClick={() => setActiveTab('orders')}
+          className={`flex flex-col items-center gap-1 text-[9px] font-bold relative ${activeTab === 'orders' ? 'text-orange-500' : 'text-neutral-500 hover:text-neutral-300'}`}
+        >
+          <Clock size={18} />
+          <span>My Orders</span>
+        </button>
+
+        <button 
           onClick={() => setActiveTab('offers')}
           className={`flex flex-col items-center gap-1 text-[9px] font-bold ${activeTab === 'offers' ? 'text-orange-500' : 'text-neutral-500 hover:text-neutral-300'}`}
         >
@@ -1163,6 +1544,68 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
           <span>Info</span>
         </button>
       </nav>
+
+      {/* 4. Secure Payment Gateway Overlay */}
+      {paymentSimulating && (
+        <div className="fixed inset-0 z-50 bg-neutral-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-96 w-96 bg-orange-600/10 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="max-w-md w-full space-y-8 animate-fade-in">
+            {/* Pulsing Secure Shield */}
+            <div className="relative mx-auto h-20 w-20 flex items-center justify-center bg-orange-500/10 border border-orange-500/20 text-orange-500 rounded-3xl animate-bounce">
+              <Shield className="h-10 w-10 animate-pulse text-orange-500" />
+            </div>
+
+            <div className="space-y-3">
+              <h2 className="text-xl font-black text-white">
+                {paymentMethod === 'upi' ? 'Initializing BHIM UPI Intent' : 'Processing Cash Order'}
+              </h2>
+              <p className="text-xs text-neutral-400 leading-relaxed">
+                Please do not close this window or press back. We are processing your transaction securely.
+              </p>
+            </div>
+
+            {/* Simulated Receipt details */}
+            <div className="bg-neutral-900/50 border border-neutral-850 rounded-2xl p-4 text-left space-y-3">
+              <div className="flex justify-between text-xs">
+                <span className="text-neutral-500">Merchant:</span>
+                <span className="font-bold text-neutral-200">{resData?.name}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-neutral-500">Payment Type:</span>
+                <span className="font-bold text-neutral-200 uppercase tracking-wider">{paymentMethod} Payment</span>
+              </div>
+              <div className="border-t border-neutral-850 pt-2 flex justify-between text-sm">
+                <span className="font-bold text-neutral-300">Total Payable:</span>
+                <span className="font-black text-orange-500">{currencySymbol}{total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Provider Badges */}
+            <div className="flex items-center justify-center gap-3 opacity-60">
+              {paymentMethod === 'upi' ? (
+                <>
+                  <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 rounded font-bold text-[9px] text-neutral-400">BHIM UPI</span>
+                  <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 rounded font-bold text-[9px] text-neutral-400">G-PAY</span>
+                  <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 rounded font-bold text-[9px] text-neutral-400">PHONEPE</span>
+                </>
+              ) : (
+                <>
+                  <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 rounded font-bold text-[9px] text-neutral-400">VISA</span>
+                  <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 rounded font-bold text-[9px] text-neutral-400">MASTERCARD</span>
+                  <span className="px-2 py-1 bg-neutral-900 border border-neutral-800 rounded font-bold text-[9px] text-neutral-400">PCI-DSS</span>
+                </>
+              )}
+            </div>
+
+            {/* Loading text spinner */}
+            <div className="flex items-center justify-center gap-2 text-xs font-bold text-neutral-400">
+              <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
+              <span>Simulating successful authentication...</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       </div>
     </div>

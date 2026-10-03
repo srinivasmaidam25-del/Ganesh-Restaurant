@@ -274,15 +274,31 @@ export default function OrderTracking({ slug }: OrderTrackingProps) {
         <div className="glass p-4 rounded-2xl flex items-center justify-between text-xs">
           <div>
             <span className="text-[9px] text-neutral-500 uppercase font-black block">Bill Details</span>
-            <span className="font-bold">Status: {liveOrder.payment_status || liveOrder.paymentStatus} ({liveOrder.payment_method?.toUpperCase() || liveOrder.paymentMethod?.toUpperCase()})</span>
+            <span className="font-bold flex items-center gap-1.5 mt-0.5">
+              Status: 
+              {(() => {
+                const pStat = (liveOrder.payment_status || liveOrder.paymentStatus || 'pending').toLowerCase();
+                if (pStat === 'paid') {
+                  return <span className="px-1.5 py-0.5 bg-green-500/10 border border-green-500/20 text-green-400 rounded-md text-[8px] font-black uppercase tracking-wider">Paid</span>;
+                }
+                return <span className="px-1.5 py-0.5 bg-red-500/10 border border-red-500/20 text-red-400 rounded-md text-[8px] font-black uppercase tracking-wider">Unpaid</span>;
+              })()}
+              <span className="text-neutral-450">({liveOrder.payment_method?.toUpperCase() || liveOrder.paymentMethod?.toUpperCase()})</span>
+            </span>
           </div>
 
-          <a 
-            href={`/api/invoice?orderId=${liveOrder.id}`}
-            className="px-4 py-2 rounded-xl bg-neutral-900 border border-neutral-800 font-bold hover:text-white transition flex items-center gap-1.5"
-          >
-            <Download size={13} /> Invoice PDF
-          </a>
+          {(liveOrder.payment_status || liveOrder.paymentStatus || 'pending').toLowerCase() === 'paid' ? (
+            <a 
+              href={`/api/invoice?orderId=${liveOrder.id}`}
+              className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-extrabold transition flex items-center gap-1.5 shadow"
+            >
+              <Download size={13} /> Invoice PDF
+            </a>
+          ) : (
+            <span className="px-4 py-2 rounded-xl bg-neutral-900/40 border border-neutral-850 text-neutral-500 font-bold flex items-center gap-1.5 cursor-not-allowed">
+              🔒 Paid Invoice
+            </span>
+          )}
         </div>
 
         {/* ITEMS LIST */}

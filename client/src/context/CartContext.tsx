@@ -17,6 +17,7 @@ export interface CouponData {
   type: 'percentage' | 'flat';
   value: number;
   discountAmount: number;
+  minOrderAmount?: number;
 }
 
 interface CartContextProps {
@@ -141,14 +142,19 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     
     let discount = 0;
     if (coupon) {
-      if (coupon.type === 'percentage') {
-        discount = (subTotal * coupon.value) / 100;
+      const minSpend = coupon.minOrderAmount || 0;
+      if (subTotal >= minSpend) {
+        if (coupon.type === 'percentage') {
+          discount = (subTotal * coupon.value) / 100;
+        } else {
+          discount = coupon.value;
+        }
+        // Make sure discount doesn't exceed subtotal
+        if (discount > subTotal) {
+          discount = subTotal;
+        }
       } else {
-        discount = coupon.value;
-      }
-      // Make sure discount doesn't exceed subtotal
-      if (discount > subTotal) {
-        discount = subTotal;
+        discount = 0;
       }
     }
 
