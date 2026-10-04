@@ -546,8 +546,9 @@ export default function AdminDashboard({ slug }: AdminDashboardProps) {
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', restaurantId],
     queryFn: async () => {
+      const mockCategories = mockDb.getCategories();
       if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
-        return mockDb.getCategories();
+        return mockCategories;
       }
       try {
         const { data, error } = await supabase
@@ -555,11 +556,18 @@ export default function AdminDashboard({ slug }: AdminDashboardProps) {
           .select('*')
           .eq('restaurant_id', restaurantId)
           .order('order_index');
-        if (error || !data) throw error || new Error('No categories data returned');
-        return data;
+
+        if (error || !data || data.length === 0) {
+          return mockCategories;
+        }
+
+        // Merge any default categories (e.g. Biryani) that aren't yet in Supabase
+        const existingNames = new Set(data.map((c: any) => c.name?.toLowerCase().trim()));
+        const missingCats = mockCategories.filter(mc => !existingNames.has(mc.name?.toLowerCase().trim()));
+        return [...data, ...missingCats];
       } catch (err) {
         console.error('Error fetching categories, falling back to mock:', err);
-        return mockDb.getCategories();
+        return mockCategories;
       }
     },
     enabled: !!restaurantId
@@ -592,8 +600,9 @@ export default function AdminDashboard({ slug }: AdminDashboardProps) {
   const { data: foods = [] } = useQuery({
     queryKey: ['foods', restaurantId],
     queryFn: async () => {
+      const mockFoods = mockDb.getFoods();
       if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
-        return mockDb.getFoods();
+        return mockFoods;
       }
       try {
         const { data, error } = await supabase
@@ -601,11 +610,18 @@ export default function AdminDashboard({ slug }: AdminDashboardProps) {
           .select('*')
           .eq('restaurant_id', restaurantId)
           .order('name');
-        if (error || !data) throw error || new Error('No foods data returned');
-        return data;
+
+        if (error || !data || data.length === 0) {
+          return mockFoods;
+        }
+
+        // Merge any default foods (e.g. all 9 Biryani items) not yet inserted into Supabase
+        const existingNames = new Set(data.map((f: any) => f.name?.toLowerCase().trim()));
+        const missingFoods = mockFoods.filter(mf => !existingNames.has(mf.name?.toLowerCase().trim()));
+        return [...data, ...missingFoods];
       } catch (err) {
         console.error('Error fetching foods, falling back to mock:', err);
-        return mockDb.getFoods();
+        return mockFoods;
       }
     },
     enabled: !!restaurantId

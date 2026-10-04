@@ -293,21 +293,28 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
   const { data: categories = [] } = useQuery({
     queryKey: ['categories', restaurantId],
     queryFn: async () => {
+      const mockCategories = mockDb.getCategories();
       if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
-        return mockDb.getCategories();
+        return mockCategories;
       }
       try {
         const { data, error } = await supabase
           .from('categories')
           .select('*')
           .eq('restaurant_id', restaurantId)
-          .eq('is_active', true)
           .order('order_index');
-        if (error || !data) throw error || new Error('No categories data returned');
-        return data;
+
+        if (error || !data || data.length === 0) {
+          return mockCategories;
+        }
+
+        // Merge any default categories (e.g. Biryani) that aren't yet in Supabase
+        const existingNames = new Set(data.map((c: any) => c.name?.toLowerCase().trim()));
+        const missingCats = mockCategories.filter(mc => !existingNames.has(mc.name?.toLowerCase().trim()));
+        return [...data, ...missingCats];
       } catch (err) {
         console.error('Error fetching categories, falling back to mock:', err);
-        return mockDb.getCategories();
+        return mockCategories;
       }
     },
     enabled: !!restaurantId
@@ -317,52 +324,53 @@ export default function CustomerMenu({ slug }: CustomerMenuProps) {
   const { data: foods = [], isLoading: isFoodsLoading } = useQuery({
     queryKey: ['foods', restaurantId, selectedCategory, searchTerm, vegFilter, bestsellerFilter, sortBy],
     queryFn: async () => {
+      const mockFoods = mockDb.getFoods();
+      let combinedList: any[] = [];
+
       if (isDemoMode || !restaurantId || restaurantId.startsWith('rest-')) {
-        let list = mockDb.getFoods();
-        if (selectedCategory) list = list.filter(f => f.categoryId === selectedCategory);
-        if (searchTerm) list = list.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        if (vegFilter === 'veg') list = list.filter(f => f.isVeg);
-        if (vegFilter === 'non-veg') list = list.filter(f => !f.isVeg);
-        if (bestsellerFilter) list = list.filter(f => f.isBestseller);
+        combinedList = [...mockFoods];
+      } else {
+        try {
+          const { data, error } = await supabase
+            .from('foods')
+            .select('*, categories(name)')
+            .eq('restaurant_id', restaurantId);
 
-        if (sortBy === 'priceLowHigh') list.sort((a, b) => a.price - b.price);
-        else if (sortBy === 'priceHighLow') list.sort((a, b) => b.price - a.price);
-        else if (sortBy === 'rating') list.sort((a, b) => b.rating - a.rating);
-        else if (sortBy === 'prepTime') list.sort((a, b) => a.prepTime - b.prepTime);
-        return list;
+          if (!error && data && data.length > 0) {
+            const existingNames = new Set(data.map((f: any) => f.name?.toLowerCase().trim()));
+            const missingFoods = mockFoods.filter(mf => !existingNames.has(mf.name?.toLowerCase().trim()));
+            combinedList = [...data, ...missingFoods];
+          } else {
+            combinedList = [...mockFoods];
+          }
+        } catch (err) {
+          console.error('Error fetching foods, falling back to mock:', err);
+          combinedList = [...mockFoods];
+        }
       }
 
-      try {
-        let query = supabase.from('foods').select('*, categories(name)').eq('restaurant_id', restaurantId);
-        if (selectedCategory) query = query.eq('category_id', selectedCategory);
-        if (searchTerm) query = query.ilike('name', `%${searchTerm}%`);
-        if (vegFilter === 'veg') query = query.eq('is_veg', true);
-        if (vegFilter === 'non-veg') query = query.eq('is_veg', false);
-        if (bestsellerFilter) query = query.eq('is_bestseller', true);
-
-        if (sortBy === 'priceLowHigh') query = query.order('price', { ascending: true });
-        else if (sortBy === 'priceHighLow') query = query.order('price', { ascending: false });
-        else if (sortBy === 'rating') query = query.order('rating', { ascending: false });
-        else if (sortBy === 'prepTime') query = query.order('prep_time', { ascending: true });
-
-        const { data, error } = await query;
-        if (error || !data) throw error || new Error('No foods data returned');
-        return data;
-      } catch (err) {
-        console.error('Error fetching foods, falling back to mock:', err);
-        let list = mockDb.getFoods();
-        if (selectedCategory) list = list.filter(f => f.categoryId === selectedCategory);
-        if (searchTerm) list = list.filter(f => f.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        if (vegFilter === 'veg') list = list.filter(f => f.isVeg);
-        if (vegFilter === 'non-veg') list = list.filter(f => !f.isVeg);
-        if (bestsellerFilter) list = list.filter(f => f.isBestseller);
-
-        if (sortBy === 'priceLowHigh') list.sort((a, b) => a.price - b.price);
-        else if (sortBy === 'priceHighLow') list.sort((a, b) => b.price - a.price);
-        else if (sortBy === 'rating') list.sort((a, b) => b.rating - a.rating);
-        else if (sortBy === 'prepTime') list.sort((a, b) => a.prepTime - b.prepTime);
-        return list;
+      let list = combinedList;
+      if (selectedCategory) {
+        list = list.filter(f => {
+          if (f.categoryId === selectedCategory || f.category_id === selectedCategory) return true;
+          if (f.categories?.name && f.categories.name.toLowerCase() === selectedCategory.toLowerCase()) return true;
+          return false;
+        });
       }
+      if (searchTerm) {
+        const q = searchTerm.toLowerCase();
+        list = list.filter(f => f.name?.toLowerCase().includes(q) || f.description?.toLowerCase().includes(q));
+      }
+      if (vegFilter === 'veg') list = list.filter(f => (f.is_veg ?? f.isVeg ?? true));
+      if (vegFilter === 'non-veg') list = list.filter(f => !(f.is_veg ?? f.isVeg));
+      if (bestsellerFilter) list = list.filter(f => (f.is_bestseller ?? f.isBestseller));
+
+      if (sortBy === 'priceLowHigh') list.sort((a, b) => Number(a.price) - Number(b.price));
+      else if (sortBy === 'priceHighLow') list.sort((a, b) => Number(b.price) - Number(a.price));
+      else if (sortBy === 'rating') list.sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0));
+      else if (sortBy === 'prepTime') list.sort((a, b) => Number(a.prep_time || a.prepTime || 15) - Number(b.prep_time || b.prepTime || 15));
+
+      return list;
     },
     enabled: !!restaurantId
   });
