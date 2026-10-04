@@ -205,7 +205,8 @@ INSERT INTO categories (id, restaurant_id, name, order_index) VALUES
 ('a123f1a1-cf0b-411a-85d0-998fde03a8d1', 'e29d7fa1-3211-477b-8919-450f63d274ff', 'Starters', 1),
 ('a123f2b2-df1c-422b-96e1-998fde03a8d2', 'e29d7fa1-3211-477b-8919-450f63d274ff', 'Curry Mains', 2),
 ('a123f3c3-ef2d-433c-97f2-998fde03a8d3', 'e29d7fa1-3211-477b-8919-450f63d274ff', 'Breads & Rice', 3),
-('a123f4d4-ff3e-444d-9803-998fde03a8d4', 'e29d7fa1-3211-477b-8919-450f63d274ff', 'Desserts & Drinks', 4)
+('a123f4d4-ff3e-444d-9803-998fde03a8d4', 'e29d7fa1-3211-477b-8919-450f63d274ff', 'Desserts & Drinks', 4),
+('a123f5e5-aa5f-555e-9905-998fde03a8d5', 'e29d7fa1-3211-477b-8919-450f63d274ff', 'Biryani', 5)
 ON CONFLICT DO NOTHING;
 
 -- Insert Foods
@@ -293,6 +294,132 @@ INSERT INTO foods (restaurant_id, category_id, name, description, price, is_veg,
   'https://images.unsplash.com/photo-1571006682864-7407852ee318?auto=format&fit=crop&q=80&w=600',
   ARRAY['Yogurt', 'Mango', 'Sugar', 'Cardamom'],
   'none'
+),
+(
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  'a123f5e5-aa5f-555e-9905-998fde03a8d5', 
+  'Veg Dum Biryani', 
+  'Fragrant basmati rice layered with spiced garden vegetables, saffron, and aromatic herbs cooked in traditional dum style. Served with Raita & Salan.', 
+  180.00, 
+  true, 
+  false, 
+  4.8, 
+  15,
+  'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&q=80&w=600',
+  ARRAY['Basmati Rice', 'Carrots', 'Beans', 'Green Peas', 'Saffron', 'Dum Spices', 'Raita', 'Salan'],
+  'medium'
+),
+(
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  'a123f5e5-aa5f-555e-9905-998fde03a8d5', 
+  'Paneer Biryani', 
+  'Succulent cubes of marinated cottage cheese layered with spiced basmati rice and slow-cooked in dum sealed pot. Served with Raita & Salan.', 
+  220.00, 
+  true, 
+  false, 
+  4.7, 
+  15,
+  'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?auto=format&fit=crop&q=80&w=600',
+  ARRAY['Paneer', 'Basmati Rice', 'Fried Onion', 'Mint', 'Ghee', 'Biryani Spices', 'Raita', 'Salan'],
+  'medium'
+),
+(
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  'a123f5e5-aa5f-555e-9905-998fde03a8d5', 
+  'Mushroom Biryani', 
+  'Juicy button mushrooms sauteed in rich Hyderabadi masala, infused with aged fragrant basmati rice and fresh herbs. Served with Raita & Salan.', 
+  210.00, 
+  true, 
+  false, 
+  4.6, 
+  15,
+  'https://images.unsplash.com/photo-1589302168068-964664d93dc0?auto=format&fit=crop&q=80&w=600',
+  ARRAY['Button Mushrooms', 'Basmati Rice', 'Brown Onion', 'Coriander', 'Shahi Masala', 'Raita', 'Salan'],
+  'medium'
+),
+(
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  'a123f5e5-aa5f-555e-9905-998fde03a8d5', 
+  'Chicken Dum Biryani', 
+  'Our signature Hyderabadi dum biryani featuring tender chicken marinated in spiced yogurt and slow-cooked with long grain saffron basmati rice. Served with Raita & Salan.', 
+  240.00, 
+  false, 
+  true, 
+  4.9, 
+  18,
+  'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&q=80&w=600',
+  ARRAY['Tender Chicken', 'Basmati Rice', 'Saffron', 'Brown Onion', 'Mint', 'Desi Ghee', 'Raita', 'Salan'],
+  'spicy'
+),
+(
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  'a123f5e5-aa5f-555e-9905-998fde03a8d5', 
+  'Chicken Fry Piece Biryani', 
+  'Crispy, spicy pan-roasted chicken fry pieces served generously over fragrant, hot spiced biryani rice. Served with Raita & Salan.', 
+  280.00, 
+  false, 
+  true, 
+  4.8, 
+  16,
+  'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?auto=format&fit=crop&q=80&w=600',
+  ARRAY['Spiced Fried Chicken', 'Biryani Rice', 'Curry Leaves', 'Green Chillies', 'Cashews', 'Raita', 'Salan'],
+  'spicy'
+),
+(
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  'a123f5e5-aa5f-555e-9905-998fde03a8d5', 
+  'Chicken 65 Biryani', 
+  'Delectable combination of fiery boneless Chicken 65 tossed with curry leaves and layered atop aromatic dum biryani rice. Served with Raita & Salan.', 
+  300.00, 
+  false, 
+  true, 
+  4.9, 
+  16,
+  'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&q=80&w=600',
+  ARRAY['Chicken 65 Boneless', 'Aromatic Rice', 'Red Chillies', 'Curry Leaves', 'Garlic', 'Raita', 'Salan'],
+  'spicy'
+),
+(
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  'a123f5e5-aa5f-555e-9905-998fde03a8d5', 
+  'Egg Biryani', 
+  'Golden shallow-fried boiled eggs infused with rich biryani masala and layered with fluffy basmati rice. Served with Raita & Salan.', 
+  190.00, 
+  false, 
+  true, 
+  4.6, 
+  12,
+  'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&q=80&w=600',
+  ARRAY['Boiled Eggs', 'Basmati Rice', 'Caramelized Onion', 'Mint', 'Biryani Masala', 'Raita', 'Salan'],
+  'medium'
+),
+(
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  'a123f5e5-aa5f-555e-9905-998fde03a8d5', 
+  'Hyderabadi Mutton Biryani', 
+  'Royal traditional recipe with melt-in-the-mouth tender mutton chunks slow-cooked with aromatic basmati rice, saffron, and royal spices. Served with Raita & Salan.', 
+  320.00, 
+  false, 
+  true, 
+  4.9, 
+  20,
+  'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?auto=format&fit=crop&q=80&w=600',
+  ARRAY['Tender Mutton', 'Aged Basmati Rice', 'Kewra Water', 'Saffron', 'Cardamom', 'Shahi Jeera', 'Raita', 'Salan'],
+  'spicy'
+),
+(
+  'e29d7fa1-3211-477b-8919-450f63d274ff', 
+  'a123f5e5-aa5f-555e-9905-998fde03a8d5', 
+  'Prawns Biryani', 
+  'Fresh coastal prawns cooked in a rich, tangy spiced masala and gently folded with fragrant saffron dum rice. Served with Raita & Salan.', 
+  330.00, 
+  false, 
+  true, 
+  4.8, 
+  15,
+  'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&q=80&w=600',
+  ARRAY['Fresh Prawns', 'Basmati Rice', 'Coconut & Spices', 'Mint', 'Lemon Juice', 'Raita', 'Salan'],
+  'medium'
 )
 ON CONFLICT DO NOTHING;
 
